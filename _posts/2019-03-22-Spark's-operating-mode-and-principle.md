@@ -29,7 +29,7 @@ spark的运行模式有以下几种：
 ## Spark的基本工作流程
 以上的运行模式总体基于一个相似的工作流程，都是将任务分成**任务调度和任务执行**两个部分，Spark应用程序的运行离不开**SparkContext和Executer**两个部分，Executer负责**执行任务**，运行Executer的节点称之为Worder节点，SparkContext由用户程序启动，通过资源**调度模块和Executer**通信。基本框架图如下图所示：
 
-![Spark基本工作流程图](../pic/spark_yunxingliuchentu.png "Spark基本工作流程图")
+![Spark基本工作流程图](https://smartcxr.github.io/pic/spark_yunxingliuchentu.png "Spark基本工作流程图")
 
 SparkContext是程序的总入口，在SparkContext的初始化过程中，Spark会分别初始化**DAGScheduler作业调度和TaskScheduler任务调度**。详情请看https://blog.csdn.net/Smart_cxr/article/details/81153578
 
@@ -276,6 +276,6 @@ private[spark] trait ExecutorBackend {
 
 ## Local模式
 ### 部署及运行
-![local模式程序](../pic/spark_local_run_program.png "local模式程序")
+![local模式程序](https://smartcxr.github.io/pic/spark_local_run_program.png "local模式程序")
 ### 内部实现原理
-![local模式程序](../pic/Local_mode_logical_structure_diagram.png "local模式程序")
+![local模式程序](https://smartcxr.github.io/pic/Local_mode_logical_structure_diagram.png "local模式程序")
