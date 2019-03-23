@@ -278,4 +278,19 @@ private[spark] trait ExecutorBackend {
 ### 部署及运行
 ![local模式程序](https://smartcxr.github.io/pic/spark_local_run_program.png "local模式程序")
 ### 内部实现原理
-![local模式程序](https://smartcxr.github.io/pic/Local_mode_logical_structure_diagram.png "local模式程序")
+![local内部实现原理](https://smartcxr.github.io/pic/Local_mode_logical_structure_diagram.png "local内部实现原理")
+
+## Standalong模式
+### 内部实现原理
+![Standalong内部实现原理](/pic/standalong_logical_structe_pic.png "Standalong内部实现原理")
+
+Standalong模式使用StandaloneSchedulerBackend（spark2.4源码），（这里需要解释一下在旧的版本中是SparkDeploySchedulerBackend），配合TaskSchedulerImpl工作，而StandaloneSchedulerBackend继承了CoarseGrainedSchedulerBackend，在新的Spark版本中，大概是在1.6版本以后Spark内部就已经不在使用Akka作为底层的消息通信，而改用了netty的RPC实现内部的消息通信。
+
+#### spark1.3的CoarseGrainedSchedulerBackend
+![spark1.3_CoarseGrainedSchedulerBackend](/pic/spark1.3_CoarseGrainedSchedulerBackend.png "spark1.3_CoarseGrainedSchedulerBackend")
+
+#### spark2.4的CoarseGrainedSchedulerBackend
+![spark2.4_CoarseGrainedSchedulerBackend](/pic/spark2.4_CoarseGrainedSchedulerBackend.png "spark2.4_CoarseGrainedSchedulerBackend")
+
+因此CoarseGrainedSchedulerBackend是一个基于Netty的RPC实现的粗粒度资源调度类，在整个spark作业期间，CoarseGrainedSchedulerBackend会监听并且持有注册给他的Executor资源，并且在接受Executor注册、状态更新、响应Scheduler请求等各种时刻，根据现有的Executor资源发起任务调度。因为在Spar中底层真正工作的是Executor，因此它是可以通过各种途径启动的，对应的，在Standalong模式中，StandaloneSchedulerBackend通过向Client类向Spark Master发送请求，在独立部署的Spark集群中启动CoarseGrainedSchedulerBackend，根据所需要的CPU数量，一个或多个CoarseGrainedExecutorBackend在worker节点上启动并注册给CoarseGrainedSchedulerBackend的Driver。
+![spark2.4_client_start](/pic/spark2.4_client_start.png "spark2.4_client_start")
