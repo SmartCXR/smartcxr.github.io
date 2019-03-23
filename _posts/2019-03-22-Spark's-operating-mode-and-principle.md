@@ -1,14 +1,15 @@
 ---
-layout: post
-title:  "Spark的运行模式及原理"
-date:   2019-03-22 11:40:18 +0800
-categories: Spark、大数据
-tags: Spark、大数据
+layout:     post
+title:      Spark的运行模式及原理
+subtitle:   Spark的运行模式及原理
+date:       2019-03-22
+author:     CXR
+header-img: img/post-bg-ios9-web.jpg
+catalog: true
+tags:
+    - Spark
+    - 大数据
 ---
-
-* content
-{:toc}
-
 
 ## Spark的运行模式
 spark的运行模式有以下几种：
