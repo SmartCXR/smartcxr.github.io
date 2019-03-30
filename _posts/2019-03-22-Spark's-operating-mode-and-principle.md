@@ -274,6 +274,33 @@ private[spark] trait ExecutorBackend {
 }
 ```
 
+## 应用提交方式与执行方式
+应用的提交包含以下两种方式。
++ Driver进程运行在客户端，对应用进行管理监控。
++ 主节点指定某个Worker节点启动Driver，负责整个应用的监控。
+
+Driver进程是应用的主控进程，负责应用的解析、切分Stage并调度Task到Executor执 行，包含DAGScheduler等重要对象。下面具体介绍这两种方式的原理。
+### Driver在客户端运行
+
+如下图所示：
+![Spark Driver位于Client](/pic/spark_client_run.png "Spark Driver位于Client")
+
+作业执行流程描述如下:
+
++ 用户启动客户端，之后客户端运行用户程序，启动Driver进程。在Driver中启动或实例 化DAGScheduler等组件。客户端的Driver向Master注册。
++ Worker向Master注册，Master命令Worker启动Exeuctor。Worker通过创建 ExecutorRunner线程，在ExecutorRunner线程内部启动ExecutorBackend进程。
++ ExecutorBackend启动后，向客户端Driver进程内的SchedulerBackend注册，这样Driver 进程就能找到计算资源。Driver的DAGScheduler解析应用中的RDD DAG并生成相应的 Stage，每个Stage包含的TaskSet通过TaskScheduler分配给Executor。在Executor内部启动 线程池并行化执行Task。
+
+### Driver在Worker运行
+
+![Spark Driver位于Worker节点的应用提交与执行机制](/pic/spark_worker_run.png "Spark Driver位于Worker节点的应用提交与执行机制")
+
+应用执行流程如下:
+
++ 用户启动客户端，客户端提交应用程序给Master。
++ Master调度应用，针对每个应用分发给指定的一个Worker启动Driver，即SchedulerBackend。Worker接收到Master命令后创建DriverRunner线程，在DriverRunner线程内创建 SchedulerBackend进程。Driver充当整个作业的主控进程。Master会指定其他Worker启动 Exeuctor，即ExecutorBackend进程，提供计算资源。流程和上面很相似，Worker创建ExecutorRunner线程，ExecutorRunner会启动ExecutorBackend进程。
++ ExecutorBackend启动后，向Driver的SchedulerBackend注册，这样Driver获取了计 算资源就可以调度和将任务分发到计算节点执行。SchedulerBackend进程中包含 DAGScheduler，它会根据RDD的DAG切分Stage，生成TaskSet，并调度和分发Task到 Executor。对于每个Stage的TaskSet，都会被存放到TaskScheduler中。TaskScheduler将任 务分发到Executor，执行多线程并行任务。
+
 ## Local模式
 ### 部署及运行
 ![local模式程序](https://smartcxr.github.io/pic/spark_local_run_program.png "local模式程序")
