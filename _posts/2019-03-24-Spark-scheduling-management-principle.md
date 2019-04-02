@@ -14,71 +14,6 @@ tags:
 ## spark调度管理概述
 在spark的作业中，各个任务之间可能存在着因果的依赖关系，也就是有些任务必须先执行后才能执行其他相关的任务，所以在本质上这种关系适合用DAG有向无环图来表示。在Spark的调度作业中最重要的就是DAGScheduler，也就是基于DAG的调度。DAGScheduler和TaskScheduler的功能划分：TaskScheduler负责每个具体任务的**实际物理调度**，而DAGScheduler负责将作业**拆分成不同阶段具有依赖关系的的多批任务**。
 
-## Spark应用程序内Job的调度
-（1）FIFO模式：
-
-在默认情况下，Spark的调度器以FIFO（先进先出）方式调度Job的执行。每个Job被切分为多个Stage。第一个Job优先获取所有可用的资源，接下来第二个Job再 获取剩余资源。以此类推，如果第一个Job并没有占用所有的资源，则第二个Job还可以继续 获取剩余资源，这样多个Job可以并行运行。如果第一个Job很大，占用所有资源，则第二个 Job就需要等待第一个任务执行完，释放空余资源，再申请和分配Job。如图所示：
-
-![FIFO模式调度示意图](/pic/spark_FIFO.png "FIFO模式调度示意图")
-
-调度算法源码如下：
-```
-private[spark] class FIFOSchedulingAlgorithm extends SchedulingAlgorithm {
-  override def comparator(s1: Schedulable, s2: Schedulable): Boolean = {
-    val priority1 = s1.priority
-    val priority2 = s2.priority
-    var res = math.signum(priority1 - priority2)
-    if (res == 0) {
-      val stageId1 = s1.stageId
-      val stageId2 = s2.stageId
-      res = math.signum(stageId1 - stageId2)
-    }
-    res < 0
-  }
-}
-```
-在算法执行中，先看优先级，TaskSet的优先级是JobID，因为先提交的JobID小，所以 就会被更优先地调度，这里相当于进行了两层排序，先看是否是同一个Job的Taskset，不同 Job之间的TaskSet先排序。
-最后执行的stageId最小为0，最先应该执行的stageId最大。但是这里的调度机制是优先调度Stageid小的。在DAGScheduler中控制Stage是否被提交到队列中，如果还有父母 Stage未执行完，则该stage的Taskset不会提交到调度池中，这就保证了虽然最先做的stage 的id大，但是排序完，由于后面的还没提交到调度池中，所以会先执行。由此可见，stage的TaskSet调度逻辑主要在DAGScheduler中，而Job调度由FIFO或者FAIR算法调度。
-
-（2）FAIR模式:
-在FAIR共享模式调度下，Spark在多Job之间以轮询（round robin）方式为任务分配资源，所有的任务拥有大致相当的优先级来共享集群的资源。这就意味着当一个长任务正在执行时，短任务仍可以分配到资源，提交并执行，并且获得不错的响应时间。这样就不用像以前一样需要等待长任务执行完才可以。这种调度模式很适合多用户的场景。用户可以通过配置spark.scheduler.mode方式来让应用以FAIR模式调度。FAIR调度器同样支持将Job分组加入调度池中调度，用户可以同时针对不同优先级对每个调度池配置不同的调度权重。这种方式允许更重要的Job配置在高优先级池中优先调度。如图所示：
-![FAIR调度模型](/pic/spark_fair.png "FAIR调度模型")
-
-调度算法源码如下：
-```
-private[spark] class FairSchedulingAlgorithm extends SchedulingAlgorithm {
-  override def comparator(s1: Schedulable, s2: Schedulable): Boolean = {
-    val minShare1 = s1.minShare
-    val minShare2 = s2.minShare
-    val runningTasks1 = s1.runningTasks
-    val runningTasks2 = s2.runningTasks
-    val s1Needy = runningTasks1 < minShare1
-    val s2Needy = runningTasks2 < minShare2
-    val minShareRatio1 = runningTasks1.toDouble / math.max(minShare1, 1.0)
-    val minShareRatio2 = runningTasks2.toDouble / math.max(minShare2, 1.0)
-    val taskToWeightRatio1 = runningTasks1.toDouble / s1.weight.toDouble
-    val taskToWeightRatio2 = runningTasks2.toDouble / s2.weight.toDouble
-
-    var compare = 0
-    if (s1Needy && !s2Needy) {
-      return true
-    } else if (!s1Needy && s2Needy) {
-      return false
-    } else if (s1Needy && s2Needy) {
-      compare = minShareRatio1.compareTo(minShareRatio2)
-    } else {
-      compare = taskToWeightRatio1.compareTo(taskToWeightRatio2)
-    }
-    if (compare < 0) {
-      true
-    } else if (compare > 0) {
-      false
-    } else {
-      s1.name < s2.name
-    }
-  }
-```
-
 ## 基本概念
 + Task 最小的处理单元
 + TaskSet 一组任务集合，包含多个Task任务
@@ -411,3 +346,70 @@ def initialize(backend: SchedulerBackend) {
 }
 ```
 调度策略有两种FIFO和Fair两种策略，默认是使用FIFO先进先出的调度策略，Fair调度策略是根据优先级来对任务进行调度的。
+## Spark应用程序内Job的调度
+（1）FIFO模式：
+
+在默认情况下，Spark的调度器以FIFO（先进先出）方式调度Job的执行。每个Job被切分为多个Stage。第一个Job优先获取所有可用的资源，接下来第二个Job再 获取剩余资源。以此类推，如果第一个Job并没有占用所有的资源，则第二个Job还可以继续 获取剩余资源，这样多个Job可以并行运行。如果第一个Job很大，占用所有资源，则第二个 Job就需要等待第一个任务执行完，释放空余资源，再申请和分配Job。如图所示：
+
+![FIFO模式调度示意图](/pic/spark_FIFO.png "FIFO模式调度示意图")
+
+调度算法源码如下：
+```
+private[spark] class FIFOSchedulingAlgorithm extends SchedulingAlgorithm {
+  override def comparator(s1: Schedulable, s2: Schedulable): Boolean = {
+    val priority1 = s1.priority
+    val priority2 = s2.priority
+    var res = math.signum(priority1 - priority2)
+    if (res == 0) {
+      val stageId1 = s1.stageId
+      val stageId2 = s2.stageId
+      res = math.signum(stageId1 - stageId2)
+    }
+    res < 0
+  }
+}
+```
+在算法执行中，先看优先级，TaskSet的优先级是JobID，因为先提交的JobID小，所以 就会被更优先地调度，这里相当于进行了两层排序，先看是否是同一个Job的Taskset，不同 Job之间的TaskSet先排序。
+最后执行的stageId最小为0，最先应该执行的stageId最大。但是这里的调度机制是优先调度Stageid小的。在DAGScheduler中控制Stage是否被提交到队列中，如果还有父母 Stage未执行完，则该stage的Taskset不会提交到调度池中，这就保证了虽然最先做的stage 的id大，但是排序完，由于后面的还没提交到调度池中，所以会先执行。由此可见，stage的TaskSet调度逻辑主要在DAGScheduler中，而Job调度由FIFO或者FAIR算法调度。
+
+（2）FAIR模式:
+在FAIR共享模式调度下，Spark在多Job之间以轮询（round robin）方式为任务分配资源，所有的任务拥有大致相当的优先级来共享集群的资源。这就意味着当一个长任务正在执行时，短任务仍可以分配到资源，提交并执行，并且获得不错的响应时间。这样就不用像以前一样需要等待长任务执行完才可以。这种调度模式很适合多用户的场景。用户可以通过配置spark.scheduler.mode方式来让应用以FAIR模式调度。FAIR调度器同样支持将Job分组加入调度池中调度，用户可以同时针对不同优先级对每个调度池配置不同的调度权重。这种方式允许更重要的Job配置在高优先级池中优先调度。如图所示：
+
+![FAIR调度模型](/pic/spark_fair.png "FAIR调度模型")
+
+调度算法源码如下：
+```
+private[spark] class FairSchedulingAlgorithm extends SchedulingAlgorithm {
+  override def comparator(s1: Schedulable, s2: Schedulable): Boolean = {
+    val minShare1 = s1.minShare
+    val minShare2 = s2.minShare
+    val runningTasks1 = s1.runningTasks
+    val runningTasks2 = s2.runningTasks
+    val s1Needy = runningTasks1 < minShare1
+    val s2Needy = runningTasks2 < minShare2
+    val minShareRatio1 = runningTasks1.toDouble / math.max(minShare1, 1.0)
+    val minShareRatio2 = runningTasks2.toDouble / math.max(minShare2, 1.0)
+    val taskToWeightRatio1 = runningTasks1.toDouble / s1.weight.toDouble
+    val taskToWeightRatio2 = runningTasks2.toDouble / s2.weight.toDouble
+
+    var compare = 0
+    if (s1Needy && !s2Needy) {
+      return true
+    } else if (!s1Needy && s2Needy) {
+      return false
+    } else if (s1Needy && s2Needy) {
+      compare = minShareRatio1.compareTo(minShareRatio2)
+    } else {
+      compare = taskToWeightRatio1.compareTo(taskToWeightRatio2)
+    }
+    if (compare < 0) {
+      true
+    } else if (compare > 0) {
+      false
+    } else {
+      s1.name < s2.name
+    }
+  }
+```
+## TaskSetManager的调度
+结合job调度和stage调度方式，可以知道，每个stage对应一个TaskSetManager通过Stage回溯到第一个没有父stage的stage提交到调度池Pool中，在调度池中会根据jobid进行排序，id小的优先调度，如果父stage没有执行完成则不会提交到调度池中。
